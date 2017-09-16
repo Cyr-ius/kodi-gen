@@ -9,11 +9,17 @@ The script accepts certain command-line parameters to enable or disable specific
 
 
 BUILD_THREADS , cores number for make
+
 BUILD_ENV rbpi or linux64
+
 GIT_BRANCH , kodi version on github https://github.com/xbmc/xbmc
+
 BUILD_DIRECT build only kodi without dependencies (not recommanded except if BUILD_DEPENDS is already )
+
 BUILD_DEPENDS, true or false
+
 BUILD_BINARY_ADDONS , true or false : build alls addons  (pvr , encode , decode , screensave ...)
+
 CHROOT_ENV for deboostrap
 
 
