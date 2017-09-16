@@ -23,7 +23,7 @@ BUILD_BINARY_ADDONS , true or false : build alls addons  (pvr , encode , decode 
 CHROOT_ENV for deboostrap
 
 
-#####Command-line examples:
+##### Command-line examples:
 ```shell
 ./make-kodi
 BUILD_ENV=rbpi GIT_BRANCH=17.4-Krypton ./make-kodi
