@@ -6,7 +6,7 @@ BUILD_DIRECT=${BUILD_DIRECT:=false}
 BUILD_DEPENDS=${BUILD_DEPENDS:=true}
 BUILD_BINARY_ADDONS=${BUILD_BINARY_ADDONS:=true}
 Configuration=${Configuration:=Release}
-CHROOT_ENV=zesty
+CHROOT_ENV=artful
 
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
 JENKINS_RBPI_DEVENV=${JENKINS_RBPI_DEVENV:=$(pwd)/rpi_userland}
@@ -47,7 +47,7 @@ if [ ! -d "/etc/schroot/${CHROOT_ENV}-64bit" ]; then
 /run/user/$(id -u)  /run/user/$(id -u)  none    rw,bind         0       0
 EOF"
 fi
-if [ $(grep -q ^profile=${CHROOT_ENV}-64bit$ /etc/schroot/schroot.conf) ]; then
+if [ ! $(grep -q ^profile=${CHROOT_ENV}-64bit$ /etc/schroot/schroot.conf) ]; then
   sudo bash -c "cat <<EOF >> /etc/schroot/schroot.conf
 [${CHROOT_ENV}-64bit]
 description=Ubuntu ${CHROOT_ENV} 64bit
@@ -66,8 +66,7 @@ sudo apt upgrade -q -y
 sudo apt install -q -y $(cat packages.txt)
 EOF
 }
-ischroot
-ISCHROOT=$?
+ischroot; ISCHROOT=$?
 if [ $ISCHROOT = 1 ]; then
   if [ ! -d $SRC_KODI ]; then
     git clone https://github.com/xbmc/xbmc.git kodi
@@ -85,8 +84,7 @@ mkdir -p $TARBALLS
 mkdir -p $PACKAGES
 mkdir -p $XBMC_DEPENDS_ROOT
 
-if [ -d $JENKINS_RBPI_DEVENV/tools ]
-then
+if [ -d $JENKINS_RBPI_DEVENV/tools ]; then
   cd $JENKINS_RBPI_DEVENV/tools;git pull origin master
 else
   cd $JENKINS_RBPI_DEVENV;git clone git://github.com/raspberrypi/tools.git --depth=1 -b master
@@ -122,11 +120,14 @@ sed -i 's/-${DISTRO_CODENAME}//g'  $WORKSPACE/cmake/cpack/CPackConfigDEB.cmake |
 sed -i 's/~git${PACKAGE_TIMESTAMP}-/-/g'  $WORKSPACE/cmake/cpack/CPackConfigDEB.cmake || sed -i 's/~git${PACKAGE_TIMESTAMP}-/-/g' $WORKSPACE/project/cmake/cpack/CPackConfigDEB.cmake
 grep -q -F "GetVersionShort" $WORKSPACE/xbmc/windows/GUIWindowSystemInfo.cpp || sed -i 's/GetVersion/GetVersionShort/g' $WORKSPACE/xbmc/windows/GUIWindowSystemInfo.cpp
 
+# Fix libbluray for kodi 17.4
+grep -q -F "libbluray2" $WORKSPACE/project/cmake/cpack/deb/packages/kodi.txt.in || sed -i 's#libbluray1#libbluray1 | libbluray2#g' $WORKSPACE/project/cmake/cpack/deb/packages/kodi.txt.in
+
 clear
 echo "====================== KODI BUILD ======================"
 echo "BRANCH             : $GIT_BRANCH"
 echo "CURRENT GIT BRANCH : $(cd $WORKSPACE;git branch | grep \*)"
-echo "PLATFORM           : $BUILD_ENV"
+echo "BUILD_ENV          : $BUILD_ENV"
 echo "ARCHITECTURE       : $ARCHITECTURE"
 echo "DEBIAN_PACKAGE_TYPE: $DEBIAN_PACKAGE_TYPE"
 echo "BINARY ADDONS      : $BUILD_BINARY_ADDONS"
