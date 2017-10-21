@@ -47,7 +47,8 @@ if [ ! -d "/etc/schroot/${CHROOT_ENV}-64bit" ]; then
 /run/user/$(id -u)  /run/user/$(id -u)  none    rw,bind         0       0
 EOF"
 fi
-if [ ! $(grep -q ^profile=${CHROOT_ENV}-64bit$ /etc/schroot/schroot.conf) ]; then
+grep -q ^profile=${CHROOT_ENV}-64bit$ /etc/schroot/schroot.conf
+if [ $? == 1 ]; then
   sudo bash -c "cat <<EOF >> /etc/schroot/schroot.conf
 [${CHROOT_ENV}-64bit]
 description=Ubuntu ${CHROOT_ENV} 64bit
