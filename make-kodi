@@ -6,7 +6,7 @@ BUILD_DIRECT=${BUILD_DIRECT:=false}
 BUILD_DEPENDS=${BUILD_DEPENDS:=true}
 BUILD_BINARY_ADDONS=${BUILD_BINARY_ADDONS:=true}
 Configuration=${Configuration:=Release}
-CHROOT_ENV=artful
+CHROOT_ENV=zesty
 
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
 JENKINS_RBPI_DEVENV=${JENKINS_RBPI_DEVENV:=$(pwd)/rpi_userland}
