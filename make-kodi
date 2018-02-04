@@ -10,7 +10,7 @@ BUILD_KODI=${BUILD_KODI:=true}
 ADDONS=${ADDONS:=all}
 VERSION=${VERSION:=debug}
 
-CHROOT_ENV=zesty
+CHROOT_ENV=artful
 BUILD_TYPE=${BUILD_TYPE:=Release}
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
 RBPI_DEVENV=${RBPI_DEVENV:=$(pwd)/rpi_userland}
@@ -122,7 +122,7 @@ fi
 
 ## DETECT WORKSPACE/PROJECT/CMAKE
 
-  [ -d "$WORKSPACE/project/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/project/cmake" && CMAKE_PATH="../project/cmake" && TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64"
+  [ -d "$WORKSPACE/project/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/project/cmake" && CMAKE_PATH="../project/cmake" && TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf"
   [ -d "$WORKSPACE/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/cmake" && CMAKE_PATH=".." && TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf"
   PATH=$PATH:/$TOOLCHAINS/bin
 
@@ -158,6 +158,9 @@ fi
     
     # Fix depends path for kodi 17.x and lower
     sed -i 's/deps_dir="$use_host"/deps_dir="$use_platform"/' $WORKSPACE/tools/depends/configure.ac
+    
+     #Fix crossuid with Artful
+     sed -i '3 s|.*|CXXFLAGS += -std=c++11|' $WORKSPACE/tools/depends/target/crossguid/Makefile
 
 
 ## RBPI
@@ -166,6 +169,7 @@ fi
     if [[ $BUILD_ENV == rbp* ]]; then
       [ ${BUILD_ENV: -1} = 1 ] && OPTIONS="--with-platform=raspberry-pi"
       [ ${BUILD_ENV: -1} = 2 ] && OPTIONS="--with-platform=raspberry-pi2"
+
       ARCHITECTURE="armhf"
       OPTIONS="$OPTIONS --host=arm-linux-gnueabihf --with-toolchain=$TOOLCHAINS --with-firmware=$RBPI_DEVENV/firmware"
       EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -D CMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
@@ -175,6 +179,12 @@ fi
       OPTIONS="$OPTIONS --host=x86_64-linux-gnu --with-toolchain=/usr"
       EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -D CMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
     fi
+    
+    if [ "$ENABLE_WAYLAND" = true ];then
+      OPTIONS="$OPTIONS --enable-wayland=yes"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DCORE_PLATFORM_NAME=wayland -DWAYLAND_RENDER_SYSTEM=gles"
+    fi
+     OPTIONS="$OPTIONS --enable-ccache"
 
 ## RETROPLAYER
 
@@ -227,6 +237,7 @@ cd $WORKSPACE/build;[ "$BUILD_KODI" = true ] && make -j $BUILD_THREADS
 if [ "$BUILD_KODI" = true ];then
   {
     echo '######## MAKE-PACKAGES ########'
+    cd $WORKSPACE/build;chrpath -d kodi-*
     cd $WORKSPACE/build;cpack -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV
   }
 fi
