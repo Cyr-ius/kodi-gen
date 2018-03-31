@@ -10,7 +10,7 @@ BUILD_KODI=${BUILD_KODI:=true}
 ADDONS=${ADDONS:=all}
 VERSION=${VERSION:=debug}
 
-CHROOT_ENV=artful
+CHROOT_ENV=bionic
 BUILD_TYPE=${BUILD_TYPE:=Release}
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
 RBPI_DEVENV=${RBPI_DEVENV:=$(pwd)/rpi_userland}
@@ -150,18 +150,23 @@ fi
       EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEBIAN_PACKAGE_TYPE=unstable"
     fi
 
-    # DBUS Fix
-     # --with-dbus-daemondir=/var/share/dbus-1/services --with-system-socket=/var/run/dbus/system_bus_socket --with-system-pid-file=/var/run/dbus/pid \
+    # Add libcurl4 for Ubuntu Bionic
+    sed -i 's/libcurl3,/libcurl4 | libcurl3,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
+
+    # Add pillow for Ubuntu Bionic
+    sed -i 's/python-imaging,/python-imaging | python-pil,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
+
+    # Add libass9 for Ubuntu Bionic
+    sed -i 's/libass5 | libass4,/libass9 | libass5 | libass4,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
 
     # Add libbluray for kodi 17.4
     sed -i 's/libbluray1,/libbluray1 | libbluray2,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
-    
+
     # Fix depends path for kodi 17.x and lower
     sed -i 's/deps_dir="$use_host"/deps_dir="$use_platform"/' $WORKSPACE/tools/depends/configure.ac
-    
+
      #Fix crossuid with Artful
      sed -i '3 s|.*|CXXFLAGS += -std=c++11|' $WORKSPACE/tools/depends/target/crossguid/Makefile
-
 
 ## RBPI
 
