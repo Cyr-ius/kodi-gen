@@ -1,4 +1,3 @@
-automake autopoint autoconf build-essential cmake curl git git-core gperf icedtea-8-plugin jayatana make nasm \
-openjdk-8-jre openjdk-8-jdk openjdk-8-source openjdk-8-demo openjdk-8-doc openjdk-8-jre-headless p7zip-full pulseaudio subversion unzip zip \
-libxext-dev libgl1-mesa-dev libglu1-mesa-dev libgles2-mesa-dev libpthread-stubs0-dev libc6-dev libva-dev libvdpau-dev libxrandr-dev \
-libbluray-dev libbluetooth-dev libpulse-dev libudev-dev libcurl4-openssl-dev chrpath ccache
+automake autopoint autoconf bison build-essential curl default-jdk gawk git gperf libcurl4-openssl-dev zlib1g-dev \
+unzip zip doxygen ccache libgl1-mesa-dev libglu1-mesa-dev libgles2-mesa-dev libvdpau-dev libxrandr-dev libva-dev \
+libbluray-dev libbluetooth-dev pulseaudio libpulse-dev liblirc-dev

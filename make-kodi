@@ -1,19 +1,22 @@
 #!/bin/bash
 CLEAN=${CLEAN:=true}
-BUILD_THREADS=${BUILD_THREADS:=$(grep -c processor /proc/cpuinfo)}
-BUILD_ENV=${BUILD_ENV:=rbp2}
+BUILD_THREADS=${BUILD_THREADS:=$(getconf _NPROCESSORS_ONLN)}
+BUILD_ENV=${BUILD_ENV:=rbp3}
 GIT_BRANCH=${GIT_BRANCH:="master"}
-BUILD_DEPENDS=${BUILD_DEPENDS:=false}
-BUILD_ADDONS=${BUILD_ADDONS:=true}
+BUILD_NATIVE=${BUILD_NATIVE:=false}
+BUILD_TARGET=${BUILD_TARGET:=false}
+BUILD_ADDONS=${BUILD_ADDONS:=false}
 BUILD_RETRO=${BUILD_RETRO:=false}
-BUILD_KODI=${BUILD_KODI:=true}
+BUILD_KODI=${BUILD_KODI:=false}
+BUILD_PACKAGE=${BUILD_PACKAGE:=true}
 ADDONS=${ADDONS:=all}
 VERSION=${VERSION:=debug}
-
-CHROOT_ENV=bionic
+CHROOT_ENV=${CHROOT_ENV:=cosmic}
+CHROOT_REPO=${CHROOT_REPO:=http://archive.ubuntu.com/ubuntu}
 BUILD_TYPE=${BUILD_TYPE:=Release}
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
 RBPI_DEVENV=${RBPI_DEVENV:=$(pwd)/rpi_userland}
+TOOLCHAINS=${TOOLCHAINS:=$RBPI_DEVENV/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf}
 TARBALLS=${TARBALLS:=$(pwd)/tarballs}
 PACKAGES=${PACKAGES:=$(pwd)/packages}
 DEPENDS_PATH=${DEPENDS_PATH:=$(pwd)/depends}
@@ -26,18 +29,20 @@ if [[ "$1" =~ "-h" ]]; then
 Usage: \n 
   CLEAN=[true|false] clean all depends and clean repository
   BUILD_THREADS=[cpu_core] 
-  BUILD_ENV=[rbp1|rbp2|linux64] for Raspberry Pi 0/1 (rbpi) , Pi 2/3 (rbpi2) , Linux 64Bits (linux64)
+  BUILD_ENV=[rbp1|rbp2|rbp3|linux64] for Raspberry Pi 0/1 (rbpi) , Pi 2 (rbpi2), Pi 3 (rbpi3) , Linux 64Bits (linux64)
   GIT_BRANCH=master 
-  BUILD_DEPENDS=[false|true] 
+  BUILD_NATIVE=[false|true] 
+  BUILD_TARGET=[false|true] 
   BUILD_ADDONS=[false|true] 
   ADDONS=[All|Addon_name] 
   BUILD_KODI=[true|false] 
   VERSION=[debug|stable]
   
 Examples : 
-    BUILD_ENV=linux64 BUILD_DEPENDS=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton  ./`basename $0` 
-    BUILD_ENV=rbp1 BUILD_DEPENDS=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` 
-    BUILD_ENV=rbp2 BUILD_DEPENDS=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` "
+    BUILD_ENV=linux64 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton  ./`basename $0` 
+    BUILD_ENV=rbp1 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` 
+    BUILD_ENV=rbp2 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` 
+    BUILD_ENV=rbp3 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable ./`basename $0` "
   exit 0
 fi
 
@@ -46,11 +51,11 @@ function chroot_env() {
 if [ ! -d "${CHROOT_PATH}/${CHROOT_ENV}-64bits" ]; then
   sudo apt install debootstrap schroot
   mkdir -p "${CHROOT_PATH}/${CHROOT_ENV}-64bits"
-  sudo debootstrap --arch amd64 ${CHROOT_ENV} "${CHROOT_PATH}/${CHROOT_ENV}-64bits" http://archive.ubuntu.com/ubuntu
+  sudo debootstrap --arch amd64 --variant=minbase --include="sudo,locales" ${CHROOT_ENV}  "${CHROOT_PATH}/${CHROOT_ENV}-64bits" ${CHROOT_REPO}
   sudo bash -c "cat <<EOF >> ${CHROOT_PATH}/${CHROOT_ENV}-64bits/etc/apt/sources.list
-deb http://archive.ubuntu.com/ubuntu ${CHROOT_ENV} main universe restricted multiverse
-deb http://archive.ubuntu.com/ubuntu ${CHROOT_ENV}-updates main universe restricted multiverse
-deb http://archive.ubuntu.com/ubuntu ${CHROOT_ENV}-backports main universe restricted multiverse
+deb ${CHROOT_REPO} ${CHROOT_ENV} main universe restricted multiverse
+deb ${CHROOT_REPO} ${CHROOT_ENV}-updates main universe restricted multiverse
+deb ${CHROOT_REPO} ${CHROOT_ENV}-backports main universe restricted multiverse
 EOF"
   sudo bash -c "cat <<EOF >> ${CHROOT_PATH}/${CHROOT_ENV}-64bits/etc/sudoers
 $(id -nu) ALL=(ALL) NOPASSWD: ALL
@@ -69,7 +74,7 @@ grep -q ^"profile=${CHROOT_ENV}-64bits$" /etc/schroot/schroot.conf
 if [ $? == 1 ]; then
   sudo bash -c "cat <<EOF >> /etc/schroot/schroot.conf
 [${CHROOT_ENV}-64bits]
-description=Ubuntu ${CHROOT_ENV} 64bits
+description=${CHROOT_ENV} 64bits
 type=directory
 directory=${CHROOT_PATH}/${CHROOT_ENV}-64bits
 users=root
@@ -80,9 +85,13 @@ profile=${CHROOT_ENV}-64bits
 EOF"
 fi
   schroot -c "${CHROOT_ENV}-64bits" <<EOF
+export PATH=$PATH:/usr/sbin:/sbin
+echo echo ${CHROOT_ENV} | sudo tee /usr/bin/lsb_release && sudo chmod +x /usr/bin/lsb_release
+sudo locale-gen fr_FR.UTF-8
 sudo apt update 
 sudo apt upgrade -q -y 
 sudo apt install -q -y $(cat packages.txt)
+sudo apt-get clean
 EOF
 }
 ischroot; ISCHROOT=$?
@@ -93,12 +102,12 @@ if [ $ISCHROOT = 1 ]; then
   if [ ! -d $RBPI_DEVENV/tools ]; then
     git clone https://github.com/raspberrypi/tools.git --depth 1 $RBPI_DEVENV/tools
   else
-    git pull
+    git -C $RBPI_DEVENV/tools pull --depth 1
   fi
   if [ ! -d $RBPI_DEVENV/firmware ]; then
     git clone https://github.com/raspberrypi/firmware.git --depth 1 $RBPI_DEVENV/firmware
   else
-    git pull
+    git -C $RBPI_DEVENV/firmware pull --depth 1
   fi
   chroot_env
   schroot -p -c "${CHROOT_ENV}-64bits" ./$0
@@ -113,8 +122,10 @@ if [ "$CLEAN" = true ]; then
   git clean -xffdq
   git checkout -q -- *
   git checkout -q master
-  git pull -q origin master
+  git pull -q
   git checkout -q $GIT_BRANCH
+  CURRENT_GIT_BRANCH="$(cd $WORKSPACE;git branch | grep \*)"
+  [[ `echo "$CURRENT_GIT_BRANCH" | grep -i $GIT_BRANCH` ]] || echo "ERROR : Git Branch not match or not found"
   cd ..
 fi
 
@@ -122,20 +133,23 @@ fi
 
 ## DETECT WORKSPACE/PROJECT/CMAKE
 
-  [ -d "$WORKSPACE/project/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/project/cmake" && CMAKE_PATH="../project/cmake" && TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf"
-  [ -d "$WORKSPACE/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/cmake" && CMAKE_PATH=".." && TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf"
-  PATH=$PATH:/$TOOLCHAINS/bin
+  [ -d "$WORKSPACE/project/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/project/cmake" && CMAKE_PATH="../project/cmake"
+  [ -d "$WORKSPACE/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/cmake" && CMAKE_PATH=".."
 
 ## CPACK
 
     #Fix options for CPACK
-    sed -i 's/^PACKAGE_SHLIBDEPS$/PACKAGE_SHLIBDEPS OFF/g'  $CMAKE_FOLDER/cpack/deb/packages/*
-    sed -i 's/^PACKAGE_SHLIBDEPS ON$/PACKAGE_SHLIBDEPS OFF/g'  $CMAKE_FOLDER/cpack/deb/packages/*
+    sed 's/^PACKAGE_SHLIBDEPS$/PACKAGE_SHLIBDEPS OFF/g' -i  $CMAKE_FOLDER/cpack/deb/packages/*
+    sed 's/^PACKAGE_SHLIBDEPS ON$/PACKAGE_SHLIBDEPS OFF/g' -i  $CMAKE_FOLDER/cpack/deb/packages/*
+    
+    # Fix options CMAKE_INSTALL_DIR CPACK for addons
+    sed 's/NEED_SUDO TRUE/NEED_SUDO FALSE/g' -i $CMAKE_FOLDER/addons/CMakeLists.txt
+    sed 's|${CMAKE_BINARY_DIR}/.install|/usr|g' -i $CMAKE_FOLDER/addons/CMakeLists.txt
 
     # Add 'include(CPACK)' for all addons
     IPACK='grep CPack $(BUILDDIR)\/$(PLATFORM)\/build\/$$addon\/CMakeLists.txt || echo "include (CPack)" >> $(BUILDDIR)\/$(PLATFORM)\/build\/$$addon\/CMakeLists.txt;\\'
     grep "grep CPack" $WORKSPACE/tools/depends/xbmc-addons.include || sed -i "/for addon/a $IPACK" $WORKSPACE/tools/depends/xbmc-addons.include
-    grep "\-j" $WORKSPACE/tools/depends/xbmc-addons.include || sed -i "s/\$(MAKE)/\$(MAKE) -j$BUILD_THREADS/g" $WORKSPACE/tools/depends/xbmc-addons.include
+    grep "\-j" $WORKSPACE/tools/depends/xbmc-addons.include || sed -i "s/\$(MAKE)/\$(MAKE) -j $BUILD_THREADS/g" $WORKSPACE/tools/depends/xbmc-addons.include
 
     # Remove distribution name in name package (exemple : mypackage_yakkety.deb)
     sed -i 's/-${DISTRO_CODENAME}//g'  $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
@@ -143,30 +157,38 @@ fi
     # Remove Git timestamp
     VERSION_TAG=$(grep VERSION_TAG $WORKSPACE/version.txt | awk '{split ($0,a," "); print a[2]}')
     if [ -z "$VERSION_TAG" ]; then
-      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEBIAN_PACKAGE_TYPE=stable"
-      sed -i 's/~git${PACKAGE_TIMESTAMP}-/-/'  $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
-      sed -i 's/:GetVersion(/:GetVersionShort(/' $WORKSPACE/xbmc/windows/GUIWindowSystemInfo.cpp
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DDEBIAN_PACKAGE_TYPE=stable"
+      sed 's/~git${PACKAGE_TIMESTAMP}-/-/' -i $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
+      sed 's/:GetVersion(/:GetVersionShort(/' -i $WORKSPACE/xbmc/windows/GUIWindowSystemInfo.cpp
     else
-      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEBIAN_PACKAGE_TYPE=unstable"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DDEBIAN_PACKAGE_TYPE=unstable"
     fi
 
-    # Add libcurl4 for Ubuntu Bionic
-    sed -i 's/libcurl3,/libcurl4 | libcurl3,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
+   # Fix version kodi
+    sed "s/RELEASE_IDENTIFIER})$/RELEASE_IDENTIFIER}-rpi${BUILD_ENV: -1})/" -i $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
 
-    # Add pillow for Ubuntu Bionic
-    sed -i 's/python-imaging,/python-imaging | python-pil,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
+    # Fix openssldir path 17.6
+    #sed -i 's|--openssldir=$(PREFIX)|--openssldir=/usr/lib/ssl --prefix=/ --libdir=lib --install_prefix=$(PREFIX)|g' $WORKSPACE/tools/depends/target/openssl/Makefile
+    sed -i 's|--prefix=$(PREFIX)|--prefix=$(PREFIX) --openssldir=/usr/lib/ssl|g' $WORKSPACE/tools/depends/target/openssl/Makefile
+    
+    # Fix build for raspberry pi 1 - add option -fPIC for g++
+    sed 's|platform_cflags="-mcpu=arm1176jzf-s|platform_cflags="-fPIC -mcpu=arm1176jzf-s|' -i $WORKSPACE/tools/depends/configure.ac
+    sed 's|platform_cxxflags="-mcpu=arm1176jzf-s|platform_cxxflags="-fPIC -mcpu=arm1176jzf-s|' -i $WORKSPACE/tools/depends/configure.ac
+    
+    # Fix error xkbcommon
+    sed -i 's|--disable-docs|--disable-docs --with-xkb-config-root=/usr/share/X11/xkb|g' $WORKSPACE/tools/depends/target/libxkbcommon/Makefile
+    
+    #Fix CEC    --disable-pie CMAKE_POSITION_INDEPENDENT_CODE
+    #~ sed -i 's|-DBUILD_SHARED_LIBS=1|-DBUILD_SHARED_LIBS=0 -DCMAKE_POSITION_INDEPENDENT_CODE=0|g' $WORKSPACE/tools/depends/target/libcec/Makefile
+    
+    # Remove gtest Install because create kodi-unspecified.deb
+    sed -i  '/# Install rules/,+4d' $WORKSPACE/lib/gtest/CMakeLists.txt
+    
+    # Add depends
+    sed -i 's/libnfs8/libnfs11/g' $WORKSPACE/cmake/cpack/deb/packages/kodi.txt.in
+    sed -i 's/libbluray1 | libbluray2/libinput10, libbluray2, libsmbclient/g' $WORKSPACE/cmake/cpack/deb/packages/kodi.txt.in
 
-    # Add libass9 for Ubuntu Bionic
-    sed -i 's/libass5 | libass4,/libass9 | libass5 | libass4,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
-
-    # Add libbluray for kodi 17.4
-    sed -i 's/libbluray1,/libbluray1 | libbluray2,/' $CMAKE_FOLDER/cpack/deb/packages/kodi.txt.in
-
-    # Fix depends path for kodi 17.x and lower
-    sed -i 's/deps_dir="$use_host"/deps_dir="$use_platform"/' $WORKSPACE/tools/depends/configure.ac
-
-     #Fix crossuid with Artful
-     sed -i '3 s|.*|CXXFLAGS += -std=c++11|' $WORKSPACE/tools/depends/target/crossguid/Makefile
+############################################## END FIX IT ################################################
 
 ## RBPI
 
@@ -174,22 +196,30 @@ fi
     if [[ $BUILD_ENV == rbp* ]]; then
       [ ${BUILD_ENV: -1} = 1 ] && OPTIONS="--with-platform=raspberry-pi"
       [ ${BUILD_ENV: -1} = 2 ] && OPTIONS="--with-platform=raspberry-pi2"
-
+      [ ${BUILD_ENV: -1} = 3 ] && OPTIONS="--with-platform=raspberry-pi3"
       ARCHITECTURE="armhf"
-      OPTIONS="$OPTIONS --host=arm-linux-gnueabihf --with-toolchain=$TOOLCHAINS --with-firmware=$RBPI_DEVENV/firmware"
-      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -D CMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
+      OPTIONS="$OPTIONS --host=arm-linux-gnueabihf --with-toolchain=$TOOLCHAINS --with-firmware=$RBPI_DEVENV/firmware --disable-debug"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DDEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -DCMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
       export XBMC_PLATFORM_DIR=rbpi
+      
+    elif [[ $BUILD_ENV == "arm64" ]]; then
+    
+      ARCHITECTURE="arm64"
+      TOOLCHAINS="$RBPI_DEVENV/tools/arm-bcm2708/gcc-arm-8.2-2018.11-x86_64-aarch64-linux-gnu"
+      OPTIONS="--host=aarch64-linux-gnu --with-toolchain=$TOOLCHAINS --with-firmware=$RBPI_DEVENV/firmware --disable-debug"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DDEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -DCMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
+      export XBMC_PLATFORM_DIR=rbpi    
+      
     else
       ARCHITECTURE="amd64"
-      OPTIONS="$OPTIONS --host=x86_64-linux-gnu --with-toolchain=/usr"
-      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -D DEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -D CMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
+      OPTIONS="$OPTIONS --host=x86_64-linux-gnu --with-toolchain=/usr --disable-debug"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DDEB_PACKAGE_ARCHITECTURE=$ARCHITECTURE -DCMAKE_TOOLCHAIN_FILE=$WORKSPACE/tools/depends/target/Toolchain.cmake"
     fi
     
     if [ "$ENABLE_WAYLAND" = true ];then
-      OPTIONS="$OPTIONS --enable-wayland=yes"
-      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DCORE_PLATFORM_NAME=wayland -DWAYLAND_RENDER_SYSTEM=gles"
+      OPTIONS="$OPTIONS --with-platform=wayland"
+      EXTRA_ARGUMENTS="$EXTRA_ARGUMENTS -DCORE_PLATFORM_NAME=wayland -DWAYLAND_RENDER_SYSTEM=gl"
     fi
-     OPTIONS="$OPTIONS --enable-ccache"
 
 ## RETROPLAYER
 
@@ -202,12 +232,13 @@ fi
 clear
 echo "====================== KODI BUILD ======================"
 echo "BRANCH               : $GIT_BRANCH"
-echo "CURRENT GIT BRANCH   : $(cd $WORKSPACE;git branch | grep \*)"
+echo "CURRENT GIT BRANCH   : $CURRENT_GIT_BRANCH"
 echo "CLEAN GIT REPOSITORY : $CLEAN"
 echo "BUILD_ENV            : $BUILD_ENV"
 echo "CHROOT               : $([ $ISCHROOT = 0 ] && echo true || echo false)"
 echo "THREADS NUMBER       : $BUILD_THREADS"
-echo "BUILD DEPENDS        : $BUILD_DEPENDS"
+echo "BUILD NATIVE         : $BUILD_NATIVE"
+echo "BUILD TARGET         : $BUILD_TARGET"
 echo "BUILD ADDONS         : $BUILD_ADDONS - $ADDONS"
 echo "BUILD KODI           : $BUILD_KODI"
 echo "ARCHITECTURE         : $ARCHITECTURE"
@@ -215,43 +246,41 @@ echo "VERSION              : $VERSION"
 echo "========================================================"
 sleep 3
 
-set -x
+PATH=$PATH:/$TOOLCHAINS/bin
+
+#~ set -x
 ######## PREPARE-DEPENDS ########
 echo '######## PREPARE-DEPENDS ########'
 cd $WORKSPACE/tools/depends;./bootstrap
 
 ######## CONFIGURE-DEPENDS ########
 echo '######## CONFIGURE-DEPENDS ########'
-cd $WORKSPACE/tools/depends;./configure $OPTIONS --prefix=$DEPENDS_PATH --with-tarballs=$TARBALLS --build=i686-linux --disable-debug 
+cd $WORKSPACE/tools/depends;./configure $OPTIONS --prefix=$DEPENDS_PATH --with-tarballs=$TARBALLS
 
 ######## MAKE-DEPENDS ########
 echo '######## MAKE-DEPENDS ########'
-cd $WORKSPACE/tools/depends;[ "$BUILD_DEPENDS" = true ] && make -j $BUILD_THREADS
+cd $WORKSPACE/tools/depends;[ "$BUILD_NATIVE" = true ] && make -C native -j $BUILD_THREADS
+cd $WORKSPACE/tools/depends;[ "$BUILD_TARGET" = true ] && make -C target -j $BUILD_THREADS
 
 ######## CONFIGURE-XBMC ########
 echo '######## CONFIGURE-XBMC ########'
 CMAKE_BIN=$DEPENDS_PATH/$(grep -P '\w+-linux-gnu-native' -o $WORKSPACE/tools/depends/target/Toolchain.cmake)/bin/cmake
+CPACK_BIN=$DEPENDS_PATH/$(grep -P '\w+-linux-gnu-native' -o $WORKSPACE/tools/depends/target/Toolchain.cmake)/bin/cpack
 cd $WORKSPACE;mkdir build
-cd $WORKSPACE/build;[ "$BUILD_KODI" = true ] && $CMAKE_BIN $EXTRA_ARGUMENTS $CMAKE_PATH
+cd $WORKSPACE/build;[ "$BUILD_KODI" = true ]  && $CMAKE_BIN $EXTRA_ARGUMENTS $CMAKE_PATH
 
 ######## MAKE-XBMC ########
 echo '######## MAKE-XBMC ########'
-cd $WORKSPACE/build;[ "$BUILD_KODI" = true ] && make -j $BUILD_THREADS
+cd $WORKSPACE/build;[ "$BUILD_KODI" = true ] && [ "$BUILD_PACKAGE" = false ] && make kodi -j $BUILD_THREADS # or : $CMAKE_BIN --build . -- -j $BUILD_THREADS
 
-######## MAKE-PACKAGES ########
-if [ "$BUILD_KODI" = true ];then
-  {
-    echo '######## MAKE-PACKAGES ########'
-    cd $WORKSPACE/build;chrpath -d kodi-*
-    cd $WORKSPACE/build;cpack -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV
-  }
-fi
+#~ ######## MAKE-PACKAGES ########
+echo '######## MAKE-PACKAGES ########'
+cd $WORKSPACE/build;[ "$BUILD_KODI" = true ] && [ "$BUILD_PACKAGE" = true ] && make package -j $BUILD_THREADS && mkdir -p $PACKAGES/$GIT_BRANCH/$BUILD_ENV && mv packages/*.deb $PACKAGES/$GIT_BRANCH/$BUILD_ENV
 
 if [ "$BUILD_ADDONS" = true ];then
   {
     echo '######## MAKE-PACKAGES-ADDONS ########'
-    cd $WORKSPACE/tools/depends/target;make -C binary-addons -j$BUILD_THREADS ADDONS=${ADDONS}
-    find $WORKSPACE/tools/depends/target/binary-addons/*/*/*/*-build/CMakeCache.txt -exec bash -c "sed -i 's|CMAKE_INSTALL_PREFIX:PATH=.*|CMAKE_INSTALL_PREFIX:PATH=/usr|g' {}" \;
+    cd $WORKSPACE/build;make -C $WORKSPACE/tools/depends/target/binary-addons -j $BUILD_THREADS ADDONS=${ADDONS} INSTALL_PREFIX=/usr CROSS_COMPILING=yes #VERBOSE=1 V=99
     cd $WORKSPACE/tools/depends/target/binary-addons/*/
     for folder in $(ls -d */); do
         if [ -d ${folder%%/}/src/${folder%%-prefix/}-build ]; then
@@ -259,13 +288,13 @@ if [ "$BUILD_ADDONS" = true ];then
           cd ${folder%%/}/src/${folder%%-prefix/}-build          
           VERSION=$(grep 'version=\".*\"$' ../../../build/${folder%%-prefix/}/${folder%%-prefix/}/addon.xml.in | awk -F '=' '{print $2}'|sed 's/"//g')
           NAME=$(echo ${folder%%-prefix/}|sed 's/\./-/g')
-          cpack -G DEB \
-          -D CPACK_PACKAGE_VERSION=${VERSION} \
+          ${CPACK_BIN} -G DEB \
+          -D CPACK_PACKAGE_VERSION=${VERSION}-rpi${BUILD_ENV: -1} \
           -D CPACK_PACKAGE_NAME=kodi-${NAME} \
           -D CPACK_PACKAGE_CONTACT=cyr-ius@ipocus.net \
           -D CPACK_DEBIAN_PACKAGE_ARCHITECTURE=${ARCHITECTURE} \
-          -D CPACK_PACKAGE_FILE_NAME=kodi-${NAME}-${VERSION}_${ARCHITECTURE} \
-          -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV
+          -D CPACK_PACKAGE_FILE_NAME=kodi-${NAME}-${VERSION}-rpi${BUILD_ENV: -1}_${ARCHITECTURE} \
+          -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV # -V
           cd ../../..
         } fi
     done
