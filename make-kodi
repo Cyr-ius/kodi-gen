@@ -165,7 +165,7 @@ fi
     fi
 
    # Fix version kodi
-    sed "s/RELEASE_IDENTIFIER})$/RELEASE_IDENTIFIER}-rpi${BUILD_ENV: -1})/" -i $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
+    sed "s/RELEASE_IDENTIFIER})$/RELEASE_IDENTIFIER}-${BUILD_ENV})/" -i $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
 
     # Fix openssldir path 17.6
     #sed -i 's|--openssldir=$(PREFIX)|--openssldir=/usr/lib/ssl --prefix=/ --libdir=lib --install_prefix=$(PREFIX)|g' $WORKSPACE/tools/depends/target/openssl/Makefile
@@ -289,11 +289,11 @@ if [ "$BUILD_ADDONS" = true ];then
           VERSION=$(grep 'version=\".*\"$' ../../../build/${folder%%-prefix/}/${folder%%-prefix/}/addon.xml.in | awk -F '=' '{print $2}'|sed 's/"//g')
           NAME=$(echo ${folder%%-prefix/}|sed 's/\./-/g')
           ${CPACK_BIN} -G DEB \
-          -D CPACK_PACKAGE_VERSION=${VERSION}-rpi${BUILD_ENV: -1} \
+          -D CPACK_PACKAGE_VERSION=${VERSION}-${BUILD_ENV} \
           -D CPACK_PACKAGE_NAME=kodi-${NAME} \
           -D CPACK_PACKAGE_CONTACT=cyr-ius@ipocus.net \
           -D CPACK_DEBIAN_PACKAGE_ARCHITECTURE=${ARCHITECTURE} \
-          -D CPACK_PACKAGE_FILE_NAME=kodi-${NAME}-${VERSION}-rpi${BUILD_ENV: -1}_${ARCHITECTURE} \
+          -D CPACK_PACKAGE_FILE_NAME=kodi-${NAME}-${VERSION}-${BUILD_ENV}_${ARCHITECTURE} \
           -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV # -V
           cd ../../..
         } fi
