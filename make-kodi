@@ -10,8 +10,7 @@ BUILD_RETRO=${BUILD_RETRO:=false}
 BUILD_KODI=${BUILD_KODI:=false}
 BUILD_PACKAGE=${BUILD_PACKAGE:=true}
 ADDONS=${ADDONS:=all}
-VERSION=${VERSION:=debug}
-CHROOT_ENV=${CHROOT_ENV:=cosmic}
+CHROOT_ENV=${CHROOT_ENV:=disco}
 CHROOT_REPO=${CHROOT_REPO:=http://archive.ubuntu.com/ubuntu}
 BUILD_TYPE=${BUILD_TYPE:=Release}
 SRC_KODI=${SRC_KODI:=$(pwd)/kodi}
@@ -35,14 +34,13 @@ Usage: \n
   BUILD_TARGET=[false|true] 
   BUILD_ADDONS=[false|true] 
   ADDONS=[All|Addon_name] 
-  BUILD_KODI=[true|false] 
-  VERSION=[debug|stable]
+  BUILD_KODI=[true|false]
   
 Examples : 
-    BUILD_ENV=linux64 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton  ./`basename $0` 
-    BUILD_ENV=rbp1 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` 
-    BUILD_ENV=rbp2 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable GIT_BRANCH=17.5-Krypton ./`basename $0` 
-    BUILD_ENV=rbp3 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true VERSION=stable ./`basename $0` "
+    BUILD_ENV=linux64 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true GIT_BRANCH=17.5-Krypton  ./`basename $0` 
+    BUILD_ENV=rbp1 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true GIT_BRANCH=17.6-Krypton ./`basename $0` 
+    BUILD_ENV=rbp2 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true GIT_BRANCH=18.0-Leia ./`basename $0` 
+    BUILD_ENV=rbp3 BUILD_NATIVE=true BUILD_TARGET=true BUILD_ADDONS=true BUILD_KODI=true ./`basename $0` "
   exit 0
 fi
 
@@ -88,9 +86,9 @@ fi
 export PATH=$PATH:/usr/sbin:/sbin
 echo echo ${CHROOT_ENV} | sudo tee /usr/bin/lsb_release && sudo chmod +x /usr/bin/lsb_release
 sudo locale-gen fr_FR.UTF-8
-sudo apt update 
-sudo apt upgrade -q -y 
-sudo apt install -q -y $(cat packages.txt)
+sudo apt-get update 
+sudo apt-get -o Dpkg::Options::="--force-confold" dist-upgrade -q -y --force-yes
+sudo apt-get install -q -y $(cat packages.txt)
 sudo apt-get clean
 EOF
 }
@@ -133,7 +131,6 @@ fi
 
 ## DETECT WORKSPACE/PROJECT/CMAKE
 
-  [ -d "$WORKSPACE/project/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/project/cmake" && CMAKE_PATH="../project/cmake"
   [ -d "$WORKSPACE/cmake/" ] && CMAKE_FOLDER="$WORKSPACE/cmake" && CMAKE_PATH=".."
 
 ## CPACK
@@ -168,7 +165,6 @@ fi
     sed "s/RELEASE_IDENTIFIER})$/RELEASE_IDENTIFIER}-${BUILD_ENV})/" -i $CMAKE_FOLDER/cpack/CPackConfigDEB.cmake
 
     # Fix openssldir path 17.6
-    #sed -i 's|--openssldir=$(PREFIX)|--openssldir=/usr/lib/ssl --prefix=/ --libdir=lib --install_prefix=$(PREFIX)|g' $WORKSPACE/tools/depends/target/openssl/Makefile
     sed -i 's|--prefix=$(PREFIX)|--prefix=$(PREFIX) --openssldir=/usr/lib/ssl|g' $WORKSPACE/tools/depends/target/openssl/Makefile
     
     # Fix build for raspberry pi 1 - add option -fPIC for g++
@@ -177,15 +173,12 @@ fi
     
     # Fix error xkbcommon
     sed -i 's|--disable-docs|--disable-docs --with-xkb-config-root=/usr/share/X11/xkb|g' $WORKSPACE/tools/depends/target/libxkbcommon/Makefile
-    
-    #Fix CEC    --disable-pie CMAKE_POSITION_INDEPENDENT_CODE
-    #~ sed -i 's|-DBUILD_SHARED_LIBS=1|-DBUILD_SHARED_LIBS=0 -DCMAKE_POSITION_INDEPENDENT_CODE=0|g' $WORKSPACE/tools/depends/target/libcec/Makefile
-    
+        
     # Remove gtest Install because create kodi-unspecified.deb
     sed -i  '/# Install rules/,+4d' $WORKSPACE/lib/gtest/CMakeLists.txt
     
     # Add depends
-    sed -i 's/libnfs8/libnfs11/g' $WORKSPACE/cmake/cpack/deb/packages/kodi.txt.in
+    sed -i 's/libnfs8/libnfs11 | libnfs12/g' $WORKSPACE/cmake/cpack/deb/packages/kodi.txt.in
     sed -i 's/libbluray1 | libbluray2/libinput10, libbluray2, libsmbclient/g' $WORKSPACE/cmake/cpack/deb/packages/kodi.txt.in
 
 ############################################## END FIX IT ################################################
@@ -231,7 +224,7 @@ fi
 
 clear
 echo "====================== KODI BUILD ======================"
-echo "BRANCH               : $GIT_BRANCH"
+echo "GIT BRANCH           : $GIT_BRANCH"
 echo "CURRENT GIT BRANCH   : $CURRENT_GIT_BRANCH"
 echo "CLEAN GIT REPOSITORY : $CLEAN"
 echo "BUILD_ENV            : $BUILD_ENV"
@@ -242,13 +235,11 @@ echo "BUILD TARGET         : $BUILD_TARGET"
 echo "BUILD ADDONS         : $BUILD_ADDONS - $ADDONS"
 echo "BUILD KODI           : $BUILD_KODI"
 echo "ARCHITECTURE         : $ARCHITECTURE"
-echo "VERSION              : $VERSION"
 echo "========================================================"
 sleep 3
 
 PATH=$PATH:/$TOOLCHAINS/bin
 
-#~ set -x
 ######## PREPARE-DEPENDS ########
 echo '######## PREPARE-DEPENDS ########'
 cd $WORKSPACE/tools/depends;./bootstrap
@@ -294,7 +285,7 @@ if [ "$BUILD_ADDONS" = true ];then
           -D CPACK_PACKAGE_CONTACT=cyr-ius@ipocus.net \
           -D CPACK_DEBIAN_PACKAGE_ARCHITECTURE=${ARCHITECTURE} \
           -D CPACK_PACKAGE_FILE_NAME=kodi-${NAME}-${VERSION}-${BUILD_ENV}_${ARCHITECTURE} \
-          -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV # -V
+          -B $PACKAGES/$GIT_BRANCH/$BUILD_ENV #-V
           cd ../../..
         } fi
     done
